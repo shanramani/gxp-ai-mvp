@@ -46,7 +46,7 @@ engine = setup_engine()
 def get_llm():
     groq_api_key = st.secrets["GROQ_API_KEY"]
     return ChatGroq(
-        model_name="llama3-70b-8192", 
+        model_name="llama-3.3-70b-versatile", 
         groq_api_key=groq_api_key,
         temperature=0
     )
@@ -75,3 +75,4 @@ if user_input and engine:
         st.write("### AI Response:")
         st.success(response.content)
         st.info(f"📄 Source: {results[0].metadata['source']}")
+
