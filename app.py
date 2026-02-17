@@ -54,7 +54,7 @@ if user_input and engine:
         results = engine.similarity_search(user_input, k=1)
         context = results[0].page_content
         
-  # 1. Access the secret you just saved in the Streamlit "Vault"
+# 1. Access the secret you just saved in the Streamlit "Vault"
 groq_api_key = st.secrets["GROQ_API_KEY"]
 
 # 2. Initialize the high-speed Groq Cloud Brain
@@ -64,9 +64,9 @@ llm = ChatGroq(
     groq_api_key=groq_api_key,
     temperature=0
 )
-        response = llm.invoke(f"Context: {context}\n\nQuestion: {user_input}\n\nAnswer:")
-        
-        st.write("### AI Response:")
-        st.success(response)
+response = llm.invoke(f"Context: {context}\n\nQuestion: {user_input}\n\nAnswer:")
+      
+st.write("### AI Response:")
+st.success(response)
+st.info(f"Source: {results[0].metadata['source']}")
 
-        st.info(f"Source: {results[0].metadata['source']}")
