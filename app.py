@@ -23,20 +23,19 @@ with st.sidebar:
 @st.cache_resource
 def setup_engine():
     path = "knowledge/"
-    if not os.path.exists(path):
-        os.makedirs(path)
-        
     pdf_files = [f for f in os.listdir(path) if f.endswith('.pdf')]
+    
     if not pdf_files:
-        st.error("⚠️ No PDFs found in /knowledge folder. Please upload a file to GitHub.")
+        st.error("Missing PDF in /knowledge folder!")
         return None
     
-    loader = PyPDFLoader(os.path.join(path, pdf_files[0]))
-    data = loader.load()
+    all_docs = []
+    for pdf in pdf_files:
+        loader = PyPDFLoader(os.path.join(path, pdf))
+        all_docs.extend(loader.load()) # This combines all PDFs into one "brain"
     
-    # Using modern HuggingFace implementation
     embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
-    vectorstore = Chroma.from_documents(documents=data, embedding=embeddings)
+    vectorstore = Chroma.from_documents(documents=all_docs, embedding=embeddings)
     return vectorstore
 
 # --- RUNNING THE APP ---
@@ -75,4 +74,5 @@ if user_input and engine:
         st.write("### AI Response:")
         st.success(response.content)
         st.info(f"📄 Source: {results[0].metadata['source']}")
+
 
