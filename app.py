@@ -8,7 +8,7 @@ from langchain_huggingface import HuggingFaceEmbeddings # Updated for cloud comp
 
 # --- GxP UI HEADER ---
 st.set_page_config(page_title="GxP AI MVP", layout="wide")
-st.title("🛡️ GxP-Validated AI Knowledge Assistant")
+st.title("🛡️ GxP-Validated AI Knowledge Assistant..by Shan.R")
 st.markdown("---")
 
 # --- SIDEBAR: AUDIT TRAIL (21 CFR Part 11) ---
@@ -60,7 +60,7 @@ if user_input and engine:
     # 2. Search & Answer
     with st.spinner("Consulting validated documents..."):
         # Search for context
-        results = engine.similarity_search(user_input, k=1)
+        results = engine.similarity_search(user_input, k=3)
         context = results[0].page_content
         
         # Connect to Groq
@@ -74,5 +74,6 @@ if user_input and engine:
         st.write("### AI Response:")
         st.success(response.content)
         st.info(f"📄 Source: {results[0].metadata['source']}")
+
 
 
