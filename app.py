@@ -73,20 +73,28 @@ engine = setup_engine()
 user_input = st.text_input("Ask a question about your SOP library:")
 
 if user_input and engine:
-    # 1. Properly Log activity
+    # 1. Log activity
     now = datetime.datetime.now().strftime("%H:%M:%S")
     st.session_state.logs.append({"time": now, "text": user_input})
     
-    with st.spinner("Analyzing all SOPs..."):
-        # 2. Search & Answer (k=6 for better cross-document coverage)
+    # NEW: Get the list of all indexed filenames to tell the AI
+    all_files = os.listdir("knowledge/")
+    indexed_docs = ", ".join([f for f in all_files if f.lower().endswith('.pdf')])
+
+    with st.spinner("Analyzing library..."):
         results = engine.similarity_search(user_input, k=6)
         context = "\n\n---\n\n".join([doc.page_content for doc in results])
         
         llm = get_llm()
-        prompt = f"""
-        You are a GxP Compliance Assistant. Use the following context from multiple SOPs to answer the question. 
-        If the documents contain conflicting info, highlight both.
         
+        # UPDATED PROMPT: We tell the AI what the "Grounded Library" consists of
+        prompt = f"""
+        You are a GxP Compliance Assistant. 
+        The total grounded library available to you consists of these documents: {indexed_docs}
+
+        Use the following retrieved context to answer the user's question. 
+        If the user asks what documents you have access to, list the names provided above.
+
         Context:
         {context}
         
@@ -95,7 +103,6 @@ if user_input and engine:
         Answer:"""
         
         response = llm.invoke(prompt)
-        
         # 3. Display Results
         st.write("### AI Response:")
         st.success(response.content)
@@ -103,3 +110,4 @@ if user_input and engine:
         # 4. Reference Attribution
         sources = set([os.path.basename(doc.metadata['source']) for doc in results])
         st.info(f"📄 Sources consulted: {', '.join(sources)}")
+
