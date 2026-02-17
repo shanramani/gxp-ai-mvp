@@ -1,4 +1,6 @@
 import streamlit as st
+from langchain_groq import ChatGroq
+import streamlit as st
 import os
 import datetime
 from langchain_community.document_loaders import PyPDFLoader
@@ -8,7 +10,7 @@ from langchain_community.llms import Ollama
 
 # --- GxP UI HEADER ---
 st.set_page_config(page_title="GxP AI MVP", layout="wide")
-st.title("🛡️ GxP-Validated AI Assistant")
+st.title("🛡️ GxP-Validated AI Knowledge Assistant")
 st.markdown("---")
 
 # --- SIDEBAR: AUDIT TRAIL (21 CFR Part 11) ---
@@ -52,10 +54,19 @@ if user_input and engine:
         results = engine.similarity_search(user_input, k=1)
         context = results[0].page_content
         
-        # Call Ollama (Llama3)
-        llm = Ollama(model="llama3")
+  # 1. Access the secret you just saved in the Streamlit "Vault"
+groq_api_key = st.secrets["GROQ_API_KEY"]
+
+# 2. Initialize the high-speed Groq Cloud Brain
+# This replaces the local Ollama setup
+llm = ChatGroq(
+    model_name="llama3-70b-8192", 
+    groq_api_key=groq_api_key,
+    temperature=0
+)
         response = llm.invoke(f"Context: {context}\n\nQuestion: {user_input}\n\nAnswer:")
         
         st.write("### AI Response:")
         st.success(response)
+
         st.info(f"Source: {results[0].metadata['source']}")
