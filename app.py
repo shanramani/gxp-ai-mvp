@@ -9,6 +9,9 @@ from langchain_huggingface import HuggingFaceEmbeddings
 # --- GxP UI HEADER ---
 st.set_page_config(page_title="GxP AI MVP", layout="wide")
 st.title("🛡️ GxP-Validated AI Knowledge Assistant..by Shan.")
+# --- INITIALIZE SESSION STATE (Do this first!) ---
+if 'logs' not in st.session_state:
+    st.session_state.logs = []
 st.markdown("---")
 
 # --- SIDEBAR: AUDIT TRAIL (21 CFR Part 11) ---
@@ -85,4 +88,5 @@ if user_input and engine:
         # 4. Reference Attribution (GxP Transparency)
         sources = set([os.path.basename(doc.metadata['source']) for doc in results])
         st.info(f"📄 Sources consulted: {', '.join(sources)}")
+
 
