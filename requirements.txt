@@ -1,6 +1,6 @@
 streamlit
-langchain-ollama
+langchain
+langchain-community
 langchain-groq
-chromadb
 pypdf
-fpdf
+chromadb
