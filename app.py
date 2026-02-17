@@ -13,12 +13,14 @@ st.markdown("---")
 
 # --- SIDEBAR: AUDIT TRAIL (21 CFR Part 11) ---
 with st.sidebar:
-    st.header("📜 Audit Trail")
-    if 'logs' not in st.session_state:
-        st.session_state.logs = []
-    for entry in st.session_state.logs:
-        st.caption(f"{entry['time']}: {entry['text']}")
-
+    st.header("📚 Knowledge Base Status")
+    path = "knowledge/"
+    files = [f for f in os.listdir(path) if f.endswith('.pdf')]
+    st.write(f"Total SOPs Indexed: **{len(files)}**")
+    for f in files:
+        st.write(f"- {f}")
+    st.markdown("---")
+    
 # --- LOGIC: INITIALIZE THE BRAIN (Multi-Doc Version) ---
 @st.cache_resource
 def setup_engine():
@@ -83,3 +85,4 @@ if user_input and engine:
         # 4. Reference Attribution (GxP Transparency)
         sources = set([os.path.basename(doc.metadata['source']) for doc in results])
         st.info(f"📄 Sources consulted: {', '.join(sources)}")
+
