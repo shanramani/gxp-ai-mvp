@@ -7,9 +7,16 @@ from langchain_community.document_loaders import PyPDFLoader
 from langchain_community.vectorstores import Chroma
 from langchain_huggingface import HuggingFaceEmbeddings
 
-# --- GxP UI HEADER ---
+# --- 1. GxP UI HEADER & CONFIG ---
 st.set_page_config(page_title="GxP AI MVP", layout="wide", page_icon="🛡️")
 
+# --- 2. INITIALIZE SESSION STATE (Must be at the top!) ---
+if 'chat_history' not in st.session_state:
+    st.session_state.chat_history = []
+if 'logs' not in st.session_state:
+    st.session_state.logs = []
+
+# Custom CSS for Pharma-grade UI
 st.markdown("""
     <style>
     .stChatMessage { background-color: #f0f2f6; border-radius: 10px; padding: 10px; margin-bottom: 10px; }
@@ -18,21 +25,18 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.title("🛡️ GxP-Validated AI Knowledge Assistant")
-st.caption("Grounded on Official SOP Library | v1.8 (Audit-Ready)")
+st.caption("Grounded on Official SOP Library | v1.9 (Audit-Ready)")
 
-if 'chat_history' not in st.session_state:
-    st.session_state.chat_history = []
-if 'logs' not in st.session_state:
-    st.session_state.logs = []
-
-# --- LOGIC: ENGINE ---
+# --- 3. LOGIC: ENGINE & LLM ---
 @st.cache_resource
 def setup_engine():
     path = "knowledge/"
-    if not os.path.exists(path): os.makedirs(path)
+    if not os.path.exists(path): 
+        os.makedirs(path)
     all_files = os.listdir(path)
     pdf_files = [f for f in all_files if f.lower().endswith('.pdf')]
-    if not pdf_files: return None
+    if not pdf_files: 
+        return None
     
     all_pages = []
     for pdf in pdf_files:
@@ -52,14 +56,15 @@ def get_llm():
         temperature=0
     )
 
-# --- SIDEBAR ---
+# --- 4. SIDEBAR: KNOWLEDGE STATUS & AUDIT TRAIL ---
 with st.sidebar:
     st.header("📚 Library Status")
     path = "knowledge/"
     all_files = os.listdir(path) if os.path.exists(path) else []
     current_pdfs = [f for f in all_files if f.lower().endswith('.pdf')]
     st.success(f"**{len(current_pdfs)}** SOPs Online")
-    for f in current_pdfs: st.caption(f"📄 {f}")
+    for f in current_pdfs: 
+        st.caption(f"📄 {f}")
     
     st.markdown("---")
     st.header("📜 Audit Trail")
@@ -71,13 +76,15 @@ with st.sidebar:
         with st.expander(f"🕒 {entry['timestamp']}"):
             st.write(f"**Action:** {entry['query']}\n**Source:** {entry['source_type']}")
 
-# --- MAIN CHAT ---
+# --- 5. MAIN CHAT DISPLAY ---
 engine = setup_engine()
 
+# Display existing chat history
 for message in st.session_state.chat_history:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
+# --- 6. USER INPUT & AI LOGIC ---
 if prompt := st.chat_input("Ask about the SOP library or specific procedures..."):
     st.session_state.chat_history.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
@@ -85,15 +92,15 @@ if prompt := st.chat_input("Ask about the SOP library or specific procedures..."
     
     if engine:
         with st.spinner("Analyzing..."):
-            # A. Retrieve Content
+            # A. Search Content (Source 2)
             results = engine.similarity_search(prompt, k=6)
             context_blocks = [f"SOURCE: {os.path.basename(d.metadata.get('source', 'Unknown'))} (Page {d.metadata.get('page', 0)+1})\nCONTENT: {d.page_content}" for d in results]
             context_text = "\n\n---\n\n".join(context_blocks)
             
-            # B. System Metadata
+            # B. System Metadata (Source 1)
             sop_list_str = ", ".join(current_pdfs)
             
-            # C. Execute LLM
+            # C. Execute LLM with Routing
             llm = get_llm()
             system_prompt = f"""
             You are a GxP Compliance Assistant. Sources:
@@ -101,8 +108,8 @@ if prompt := st.chat_input("Ask about the SOP library or specific procedures..."
             2. DOCUMENT CONTENT (Text inside PDFs): {context_text}
 
             RULES:
-            - If asking about the library/files/sidebar, start with 'SOURCE_TYPE: METADATA'.
-            - If asking about SOP procedures/content, start with 'SOURCE_TYPE: CONTENT'. Cite SOP and Page.
+            - If asking about the library/files/sidebar/inventory, start with 'SOURCE_TYPE: METADATA'.
+            - If asking about SOP procedures/content/details, start with 'SOURCE_TYPE: CONTENT'. Cite SOP and Page.
             
             Question: {prompt}
             """
@@ -110,7 +117,7 @@ if prompt := st.chat_input("Ask about the SOP library or specific procedures..."
             response = llm.invoke(system_prompt)
             raw_content = response.content
             
-            # D. Determine display and re-enable the blue pill
+            # D. Parse Source Type and Show Reference Pill
             is_content_query = "SOURCE_TYPE: CONTENT" in raw_content
             source_display = "📑 Document Content" if is_content_query else "📂 System Metadata"
             clean_response = raw_content.replace("SOURCE_TYPE: CONTENT", "").replace("SOURCE_TYPE: METADATA", "").strip()
@@ -119,11 +126,12 @@ if prompt := st.chat_input("Ask about the SOP library or specific procedures..."
                 st.markdown(f"**{source_display}**")
                 st.markdown(clean_response)
                 
-                # FIXED: The "Blue Pill" logic is now tied directly to whether it's a content query
+                # Verified Grounding pill logic
                 if is_content_query and results:
                     sources = set([f"{os.path.basename(d.metadata['source'])} (p.{d.metadata['page']+1})" for d in results])
                     st.info(f"**Verified Grounding:** {', '.join(sources)}")
             
+            # E. Update State & Logs
             st.session_state.chat_history.append({"role": "assistant", "content": clean_response})
             st.session_state.logs.append({
                 "user": "Shan",
@@ -132,3 +140,5 @@ if prompt := st.chat_input("Ask about the SOP library or specific procedures..."
                 "source_type": source_display,
                 "status": "Success"
             })
+    else:
+        st.error("Engine not ready. Please ensure your /knowledge folder contains PDFs.")
