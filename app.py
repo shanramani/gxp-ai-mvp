@@ -10,17 +10,17 @@ from langchain_huggingface import HuggingFaceEmbeddings
 # --- GxP UI HEADER ---
 st.set_page_config(page_title="GxP AI MVP", layout="wide", page_icon="🛡️")
 
-# Custom CSS for a professional "Pharma" look
+# Custom CSS for Pharma-grade UI
 st.markdown("""
     <style>
     .stChatMessage { background-color: #f0f2f6; border-radius: 10px; padding: 10px; margin-bottom: 10px; }
-    .stBadge { background-color: #e1e4e8; }
+    .stBadge { background-color: #e1e4e8; color: #31333F; padding: 5px; border-radius: 5px; }
     .main { background-color: #ffffff; }
     </style>
 """, unsafe_allow_html=True)
 
 st.title("🛡️ GxP-Validated AI Knowledge Assistant")
-st.caption("Standard Operating Procedure (SOP) Grounded Intelligence | v1.5")
+st.caption("Grounded on Official SOP Library | v1.7 (Audit-Ready)")
 
 # --- INITIALIZE SESSION STATE ---
 if 'chat_history' not in st.session_state:
@@ -36,7 +36,6 @@ def setup_engine():
         os.makedirs(path)
     
     all_files = os.listdir(path)
-    # Case-insensitive PDF detection
     pdf_files = [f for f in all_files if f.lower().endswith('.pdf')]
     
     if not pdf_files:
@@ -65,7 +64,7 @@ def get_llm():
 with st.sidebar:
     st.header("📚 Library Status")
     path = "knowledge/"
-    all_files = os.listdir(path)
+    all_files = os.listdir(path) if os.path.exists(path) else []
     current_pdfs = [f for f in all_files if f.lower().endswith('.pdf')]
     
     st.success(f"**{len(current_pdfs)}** SOPs Online")
@@ -75,7 +74,6 @@ with st.sidebar:
     st.markdown("---")
     st.header("📜 Audit Trail (21 CFR)")
     
-    # Export Audit Log Button
     if st.session_state.logs:
         df_logs = pd.DataFrame(st.session_state.logs)
         csv = df_logs.to_csv(index=False).encode('utf-8')
@@ -86,12 +84,11 @@ with st.sidebar:
             mime="text/csv",
         )
     
-    # Display individual log entries
     for entry in reversed(st.session_state.logs):
         with st.expander(f"🕒 {entry['timestamp']}"):
             st.write(f"**User:** {entry['user']}")
             st.write(f"**Query:** {entry['query']}")
-            st.write(f"**Status:** {entry['status']}")
+            st.write(f"**Source:** {entry['source_type']}")
 
 # --- MAIN CHAT INTERFACE ---
 engine = setup_engine()
@@ -102,19 +99,16 @@ for message in st.session_state.chat_history:
         st.markdown(message["content"])
 
 # User Input
-if prompt := st.chat_input("Ask a question about the SOP library..."):
-    # 1. Add user message to chat
+if prompt := st.chat_input("Ask about the SOP library or specific procedures..."):
+    # 1. Add user message
     st.session_state.chat_history.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.markdown(prompt)
     
-    # 2. RAG Logic
     if engine:
-        with st.spinner("Analyzing validated sources..."):
-            # Search for top 6 relevant snippets
+        with st.spinner("Analyzing request and routing to correct data source..."):
+            # A. Search content (Source 2)
             results = engine.similarity_search(prompt, k=6)
-            
-            # Build context with Page Numbers for citations
             context_blocks = []
             for doc in results:
                 source_name = os.path.basename(doc.metadata.get('source', 'Unknown'))
@@ -123,42 +117,54 @@ if prompt := st.chat_input("Ask a question about the SOP library..."):
             
             context_text = "\n\n---\n\n".join(context_blocks)
             
-            # Get the list of all indexed files for system grounding
-            indexed_docs = ", ".join(current_pdfs)
+            # B. Get Metadata list (Source 1)
+            sop_list_str = ", ".join(current_pdfs)
             
-            # 3. Get AI Response with strict GxP instructions
+            # C. Routing Prompt Logic
             llm = get_llm()
             system_prompt = f"""
-            You are a precise GxP Compliance Assistant. 
-            The total grounded library available to you consists of: {indexed_docs}
+            You are a GxP Compliance Assistant. You have access to two data sources:
+            
+            1. SYSTEM METADATA: A list of the current SOP files: {sop_list_str}
+            2. DOCUMENT CONTENT: Specific text retrieved from inside those files: {context_text}
 
-            Use the following retrieved context to answer. 
-            ALWAYS mention the SOP name and Page Number in your answer.
-            If the answer is not in the context, state that you cannot find the info in the current validated library.
+            INSTRUCTIONS:
+            - If the user asks about the library, what documents you have, or the sidebar, use SYSTEM METADATA. Start your answer with "SOURCE_TYPE: METADATA".
+            - If the user asks about procedures, instructions, or details inside an SOP, use DOCUMENT CONTENT. Start your answer with "SOURCE_TYPE: CONTENT". Mention SOP names and Page Numbers.
+            - If the answer is not available, say you don't know based on the grounded library.
 
-            Context:
-            {context_text}
-
-            Question: {prompt}
+            User Question: {prompt}
             """
             
             response = llm.invoke(system_prompt)
+            raw_content = response.content
             
-            # 4. Display Assistant response
-            with st.chat_message("assistant"):
-                st.markdown(response.content)
-                # Show verified Source Pills for auditability
-                sources = set([f"{os.path.basename(d.metadata['source'])} (p.{d.metadata['page']+1})" for d in results])
-                st.info(f"**Verified Grounding:** {', '.join(sources)}")
-            
-            st.session_state.chat_history.append({"role": "assistant", "content": response.content})
+            # D. Parse Source Type for UI
+            if "SOURCE_TYPE: METADATA" in raw_content:
+                source_display = "📂 System Metadata (Library List)"
+                clean_response = raw_content.replace("SOURCE_TYPE: METADATA", "").strip()
+            else:
+                source_display = "📑 Document Content (Inside SOPs)"
+                clean_response = raw_content.replace("SOURCE_TYPE: CONTENT", "").strip()
 
-            # 5. Log the successful event in Audit Trail
+            # 2. Display Assistant response
+            with st.chat_message("assistant"):
+                st.markdown(f"**{source_display}**")
+                st.markdown(clean_response)
+                
+                # Show Verified Grounding pills if it was a content-based query
+                if "CONTENT" in raw_content:
+                    sources = set([f"{os.path.basename(d.metadata['source'])} (p.{d.metadata['page']+1})" for d in results])
+                    st.info(f"**Verified Grounding:** {', '.join(sources)}")
+            
+            # 3. Save to History and Audit Trail
+            st.session_state.chat_history.append({"role": "assistant", "content": clean_response})
             st.session_state.logs.append({
                 "user": "Shan (Lead)",
                 "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                 "query": prompt,
+                "source_type": source_display,
                 "status": "Success"
             })
     else:
-        st.error("Engine not initialized. Please ensure PDFs are in the /knowledge folder.")
+        st.error("No PDFs detected in the 'knowledge/' folder. Please upload SOPs to continue.")
