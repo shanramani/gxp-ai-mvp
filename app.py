@@ -17,7 +17,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-st.title("🛡️ GxP-Validated AI Knowledge Assistant")
+st.title("🛡️ GxP-Validated AI Knowledge Assistant..Shan R")
 st.caption("Version 1.2 | Grounded on Official SOP Library")
 
 # --- INITIALIZE SESSION STATE ---
@@ -118,3 +118,4 @@ if prompt := st.chat_input("Ask about SOP details (e.g., 'What is the deviation 
                 st.info(f"**Verified Sources:** {', '.join(sources)}")
             
             st.session_state.chat_history.append({"role": "assistant", "content": response.content})
+
