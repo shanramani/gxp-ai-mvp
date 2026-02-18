@@ -7,107 +7,114 @@ from langchain_community.vectorstores import Chroma
 from langchain_huggingface import HuggingFaceEmbeddings
 
 # --- GxP UI HEADER ---
-st.set_page_config(page_title="GxP AI MVP", layout="wide")
-st.title("🛡️ GxP-Validated AI Knowledge Assistant..by Shan.")
+st.set_page_config(page_title="GxP AI MVP", layout="wide", page_icon="🛡️")
+
+# Custom CSS for a "cleaner" Pharma look
+st.markdown("""
+    <style>
+    .stChatMessage { background-color: #f0f2f6; border-radius: 10px; padding: 10px; margin-bottom: 10px; }
+    .stBadge { background-color: #e1e4e8; }
+    </style>
+""", unsafe_allow_html=True)
+
+st.title("🛡️ GxP-Validated AI Knowledge Assistant")
+st.caption("Version 1.2 | Grounded on Official SOP Library")
 
 # --- INITIALIZE SESSION STATE ---
+if 'chat_history' not in st.session_state:
+    st.session_state.chat_history = []
 if 'logs' not in st.session_state:
     st.session_state.logs = []
 
-st.markdown("---")
-
-# --- SIDEBAR: KNOWLEDGE STATUS & AUDIT TRAIL ---
+# --- SIDEBAR: AUDIT & STATUS ---
 with st.sidebar:
-    st.header("📚 Knowledge Base Status")
+    st.header("📚 Library Status")
     path = "knowledge/"
-    if not os.path.exists(path):
-        os.makedirs(path)
-    
-    # FIX: Look for both .pdf and .PDF
+    if not os.path.exists(path): os.makedirs(path)
     all_files = os.listdir(path)
     pdf_files = [f for f in all_files if f.lower().endswith('.pdf')]
-    
-    st.write(f"Total SOPs Indexed: **{len(pdf_files)}**")
+    st.success(f"**{len(pdf_files)}** SOPs Online")
     for f in pdf_files:
-        st.write(f"- {f}")
+        st.caption(f"📄 {f}")
     
     st.markdown("---")
-    st.header("📜 Audit Trail")
+    st.header("📜 Audit Trail (21 CFR)")
     for entry in st.session_state.logs:
-        st.caption(f"{entry['time']}: {entry['text']}")
+        st.caption(f"**{entry['time']}**: {entry['text']}")
 
-# --- LOGIC: INITIALIZE THE BRAIN ---
+# --- LOGIC: ENGINE & LLM ---
 @st.cache_resource
 def setup_engine():
     path = "knowledge/"
     all_files = os.listdir(path)
-    # FIX: Ensure the engine actually loads the uppercase .PDF files too
     pdf_files = [f for f in all_files if f.lower().endswith('.pdf')]
-    
-    if not pdf_files:
-        return None
+    if not pdf_files: return None
     
     all_pages = []
     for pdf in pdf_files:
-        try:
-            loader = PyPDFLoader(os.path.join(path, pdf))
-            all_pages.extend(loader.load())
-        except Exception as e:
-            st.warning(f"Could not load {pdf}: {e}")
+        loader = PyPDFLoader(os.path.join(path, pdf))
+        all_pages.extend(loader.load())
 
     embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
-    vectorstore = Chroma.from_documents(documents=all_pages, embedding=embeddings)
-    return vectorstore
+    return Chroma.from_documents(documents=all_pages, embedding=embeddings)
 
-# --- LOGIC: CONNECT TO GROQ BRAIN ---
 def get_llm():
-    groq_api_key = st.secrets["GROQ_API_KEY"]
     return ChatGroq(
         model_name="llama-3.3-70b-versatile", 
-        groq_api_key=groq_api_key,
+        groq_api_key=st.secrets["GROQ_API_KEY"],
         temperature=0
     )
 
-# --- RUNNING THE APP ---
 engine = setup_engine()
-user_input = st.text_input("Ask a question about your SOP library:")
 
-if user_input and engine:
-    # 1. Log activity
-    now = datetime.datetime.now().strftime("%H:%M:%S")
-    st.session_state.logs.append({"time": now, "text": user_input})
+# --- CHAT INTERFACE (The "ChatGPT" Look) ---
+for message in st.session_state.chat_history:
+    with st.chat_message(message["role"]):
+        st.markdown(message["content"])
+
+if prompt := st.chat_input("Ask about SOP details (e.g., 'What is the deviation process?')"):
+    # 1. Add user message to chat and logs
+    st.session_state.chat_history.append({"role": "user", "content": prompt})
+    with st.chat_message("user"):
+        st.markdown(prompt)
     
-    # NEW: Get the list of all indexed filenames to tell the AI
-    all_files = os.listdir("knowledge/")
-    indexed_docs = ", ".join([f for f in all_files if f.lower().endswith('.pdf')])
+    now = datetime.datetime.now().strftime("%H:%M:%S")
+    st.session_state.logs.append({"time": now, "text": prompt})
 
-    with st.spinner("Analyzing library..."):
-        results = engine.similarity_search(user_input, k=6)
-        context = "\n\n---\n\n".join([doc.page_content for doc in results])
-        
-        llm = get_llm()
-        
-        # UPDATED PROMPT: We tell the AI what the "Grounded Library" consists of
-        prompt = f"""
-        You are a GxP Compliance Assistant. 
-        The total grounded library available to you consists of these documents: {indexed_docs}
+    # 2. RAG Logic with Citations
+    if engine:
+        with st.spinner("Searching validated sources..."):
+            results = engine.similarity_search(prompt, k=5)
+            
+            # Build context with Page Numbers
+            context_blocks = []
+            for doc in results:
+                source_name = os.path.basename(doc.metadata.get('source', 'Unknown'))
+                page_num = doc.metadata.get('page', 0) + 1  # Index starts at 0
+                context_blocks.append(f"SOURCE: {source_name} (Page {page_num})\nCONTENT: {doc.page_content}")
+            
+            context = "\n\n---\n\n".join(context_blocks)
+            
+            # 3. Get AI Response
+            llm = get_llm()
+            full_prompt = f"""
+            You are a precise GxP Compliance Officer. Use the context below to answer.
+            ALWAYS mention the SOP name and Page Number in your answer when possible.
+            If the answer is not in the context, say you don't know based on current SOPs.
 
-        Use the following retrieved context to answer the user's question. 
-        If the user asks what documents you have access to, list the names provided above.
+            Context:
+            {context}
 
-        Context:
-        {context}
-        
-        Question: {user_input}
-        
-        Answer:"""
-        
-        response = llm.invoke(prompt)
-        # 3. Display Results
-        st.write("### AI Response:")
-        st.success(response.content)
-        
-        # 4. Reference Attribution
-        sources = set([os.path.basename(doc.metadata['source']) for doc in results])
-        st.info(f"📄 Sources consulted: {', '.join(sources)}")
-
+            Question: {prompt}
+            """
+            
+            response = llm.invoke(full_prompt)
+            
+            # 4. Display Assistant response
+            with st.chat_message("assistant"):
+                st.markdown(response.content)
+                # Show explicit Source Pills
+                sources = set([f"{os.path.basename(d.metadata['source'])} (p.{d.metadata['page']+1})" for d in results])
+                st.info(f"**Verified Sources:** {', '.join(sources)}")
+            
+            st.session_state.chat_history.append({"role": "assistant", "content": response.content})
